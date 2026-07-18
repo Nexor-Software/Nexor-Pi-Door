@@ -75,14 +75,6 @@ Wichtige Abgrenzungen:
 - Am Windows-PC funktionieren Relais und vorhandenes USB-A-auf-USB-B-Kabel.
 - Ohne angeschlossene 12 V erzeugt das Relais beim erneuten Einstecken trotzdem die Low-Speed-Erkennung. Es ist also USB-seitig aktiv, der Pi-Hub kann aber die Gerätebeschreibung nicht lesen.
 
-## Strom-/Rückspeisungsbeobachtung
-
-Bei angeschlossener 12-V-Relaisversorgung blieb der Pi an, nachdem sein separates 5-V-Netzteil entfernt wurde. Nach Trennen der 12-V-Relaisversorgung ging der Pi aus.
-
-Das zeigt eine Rückspeisung über den USB-Pfad oder die Hub-Versorgung. Die genaue Stelle (Relais, Hub oder Zusammenspiel) wurde nicht zerstörungsfrei bestimmt.
-
-Folgerung: Während weiterer Tests muss das Magnetschloss abgeklemmt bleiben. Vor Anschluss von 12 V an das Relais am Pi muss geprüft werden, ob der neue Aufbau den Pi rückspeist.
-
 ## Getestete reine Software-Workarounds
 
 Beide Tests wurden ohne 12-V-Relaisversorgung durchgeführt und haben die Enumeration nicht verbessert:
