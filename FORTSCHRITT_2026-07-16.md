@@ -139,3 +139,56 @@ Ein PortaPow USB Power Blocker (`PP_PBC1`) trennt 5 V/VBUS und lässt Daten durc
 - Es wurde kein Relais-Schaltbefehl an der Türlast ausgeführt.
 - Das Magnetschloss soll bis zu erfolgreichen, lastfreien Relais- und Rückspeisungstests getrennt bleiben.
 - Die Software darf bei Readerverlust nicht verriegeln; das entspricht dem Projektplan.
+
+## Update: MOSFET-Alternative statt USB-Relais (2026-07-18)
+
+Der weitere Tischtest verwendet nicht mehr das USB-Relais als Schaltglied. Das vorhandene 4-Kanal-MOSFET-Modul ist eine geeignete Alternative fuer die 12-V-DC-Last und umgeht die nachgewiesene Low-Speed-USB-Inkompatibilitaet des vorhandenen Hubs vollstaendig.
+
+### Bestaetigte MOSFET-Anschluesse
+
+Am Modul wird ausschliesslich Kanal 1 verwendet:
+
+```text
+Pi GPIO17 (physischer Pin 11) -> PWM1
+Pi GND (physischer Pin 9) -> GND1
+
+12-V-Netzteil Plus -> DC+
+12-V-Netzteil Minus -> DC-
+
+Magnetschloss Plus -> OUT1+
+Magnetschloss Minus -> OUT1-
+```
+
+`OUT1-` ist der per MOSFET geschaltete Minuspol; `OUT1+` ist mit dem positiven 12-V-Versorgungszweig verbunden. Das Magnetschloss darf erst nach einem lastfreien Funktionstest angeschlossen werden. Jumper-Kabel sind nur fuer `PWM1` und `GND1` zulaessig, nicht fuer den 12-V- oder Schlossstromkreis.
+
+GPIO17 ist auf dem Pi als Ausgang mit LOW-Pegel gesetzt. Kanal 1 ist damit softwareseitig aus. Die GPIO-Steuerung ist angeschlossen; die 12-V-Seite bleibt bis zum naechsten Test getrennt.
+
+### Fehlendes Teil vor dem 12-V-Test
+
+Das vorhandene 12-V-/5-A-Netzteil hat einen Hohlstecker (Plus innen). Fuer die Verbindung zum MOSFET-Modul wird eine passende weibliche DC-Buchse mit offenen, ausreichend dimensionierten Leitungen benoetigt:
+
+```text
+DC-Buchse (female), 5,5 x 2,1 mm, 18 AWG, mindestens 5 A
+```
+
+Der Adapter darf erst verwendet werden, nachdem die tatsaechliche Steckerabmessung des Netzteils bestaetigt ist. Das Netzteilkabel wird nicht abgeschnitten. Vor dem Anschluss des Magnetschlosses sind DC+/DC- ohne Last zu verdrahten und Kanal 1 getrennt zu testen.
+
+### USB-Relais: abschliessender Diagnose-Stand
+
+Das Projekt `darrylb123/usbrelay` wurde auf dem Pi aus der Quelle gebaut und nach `/usr/bin/usbrelay` installiert. Zusaetzlich sind `git` und `libhidapi-dev` installiert. Der Befehl `sudo usbrelay -d` meldet erwartungsgemaess `Found 0 devices`, weil das Relais nicht enumeriert wird.
+
+Das USB-Relais bleibt am vorhandenen Hub nicht nutzbar. Nach dem Wiedereinstecken erschien erneut nur:
+
+```text
+usb 1-1.4: new low-speed USB device number ... using dwc_otg
+usb 1-1-port4: attempt power cycle
+```
+
+Es gibt weiterhin weder `16c0:05df` in `lsusb` noch ein `/dev/hidraw*`. Die bereits getesteten Kernel-Optionen `dwc_otg.speed=1` und `usbcore.old_scheme_first=Y` haben das Problem nicht geloest und sind nicht aktiv. Der NFC-Leser funktioniert weiter am Hub.
+
+### Angepasste naechste Schritte
+
+1. Passende DC-Buchse mit 18-AWG-Leitung beschaffen und die Steckerabmessung pruefen.
+2. MOSFET-Modul ohne Magnetschloss mit 12 V versorgen und Kanal 1 per GPIO17 ein-/ausschalten.
+3. Erst nach erfolgreichem lastfreien Test Magnetschloss sowie manuellen Abschalter und Sicherung im 12-V-Pluszweig verdrahten.
+4. Die Anwendungssoftware verwendet GPIO17 statt `usbrelay`; die geforderte Sicherheitslogik bleibt: LOW = entriegelt, HIGH = verriegelt.
