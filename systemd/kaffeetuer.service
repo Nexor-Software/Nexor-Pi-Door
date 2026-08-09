@@ -1,0 +1,16 @@
+[Unit]
+Description=Offline NFC door controller
+Wants=pcscd.socket
+After=pcscd.socket
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/pinctrl set 27 op dl
+ExecStart=/usr/bin/python3 /opt/kaffeetuer/door_controller.py
+ExecStopPost=/usr/bin/pinctrl set 27 op dl
+Restart=always
+RestartSec=2
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -192,3 +192,174 @@ Es gibt weiterhin weder `16c0:05df` in `lsusb` noch ein `/dev/hidraw*`. Die bere
 2. MOSFET-Modul ohne Magnetschloss mit 12 V versorgen und Kanal 1 per GPIO17 ein-/ausschalten.
 3. Erst nach erfolgreichem lastfreien Test Magnetschloss sowie manuellen Abschalter und Sicherung im 12-V-Pluszweig verdrahten.
 4. Die Anwendungssoftware verwendet GPIO17 statt `usbrelay`; die geforderte Sicherheitslogik bleibt: LOW = entriegelt, HIGH = verriegelt.
+
+## Update: MOSFET-Eingang benoetigt 5 V (2026-08-02)
+
+Die 12-V-Seite wurde inzwischen erfolgreich aufgebaut und getestet. Verwendet werden die passende DC-Buchse, das vorhandene 12-V-/5-A-Netzteil und Kanal 1 des MOSFET-Moduls.
+
+### Bestaetigte 12-V-Verdrahtung
+
+```text
+12-V-Netzteil Plus -> DC+
+12-V-Netzteil Minus -> DC-
+
+Magnetschloss Plus -> OUT1+
+Magnetschloss Minus -> OUT1-
+```
+
+Ein direkter Test des Magnetschlosses an DC+/DC- war erfolgreich: Netzteil, DC-Adapter, Leitungen und Magnetschloss funktionieren. Auch ueber OUT1 zog das Schloss an, sobald der MOSFET-Eingang mit festen 5 V angesteuert wurde.
+
+### Eindeutige Diagnose des Steuereingangs
+
+Folgende Eingangstests wurden durchgefuehrt:
+
+| Steuersignal an PWM1 | Ergebnis |
+| --- | --- |
+| Pi Pin 2, feste 5 V | IN1 und OUT1 aktiv; Magnetschloss zieht an |
+| Pi Pin 1, feste 3,3 V | IN1 nur sehr schwach; OUT1 aus; Schloss bleibt aus |
+| GPIO17, 3,3 V | IN1 nur sehr schwach; OUT1 aus; Schloss bleibt aus |
+| GPIO27, 3,3 V | IN1 nur sehr schwach; OUT1 aus; Schloss bleibt aus |
+
+Damit sind ein defekter GPIO, ein Fehler am MOSFET-Ausgang sowie ein Fehler an Netzteil oder Schloss ausgeschlossen. Der Eingang dieses konkreten MOSFET-Moduls benoetigt praktisch etwa 5 V. Die beworbene Untergrenze von 3 V ist bei diesem Exemplar nicht nutzbar. Ein Pi-GPIO darf keinesfalls direkt mit 5 V verbunden werden.
+
+Die vorherige Annahme, das MOSFET-Modul koenne direkt ueber GPIO17 angesteuert werden, ist damit widerlegt. Bis zum Einbau eines Treibers ist GPIO27 als Ausgang auf LOW gesetzt; dadurch bleibt der MOSFET-Kanal aus.
+
+### Bestelltes Treibermodul
+
+Bestellt wird ein fertiges, Raspberry-Pi-kompatibles 5-V-Relaismodul mit Low-Level-Trigger:
+
+- Produkt: `AZDelivery 1-Relais 5V KF-301 Modul Low-Level-Trigger`
+- Amazon-ASIN: `B07V1YQQGL`
+- Link: <https://www.amazon.de/dp/B07V1YQQGL>
+- Anschluesse: Jumper-Pins fuer `VCC`, `GND`, `IN`; Schraubklemmen fuer `COM`, `NO`, `NC`
+- Es ist kein Loeten erforderlich.
+
+Das neue Relais schaltet nicht direkt den hohen Schlossstrom. Es erzeugt nur das bereits erfolgreich getestete 5-V-Steuersignal fuer `PWM1`. Das vorhandene MOSFET-Modul bleibt das eigentliche Schaltglied fuer das Magnetschloss.
+
+### Geplante Verdrahtung nach Lieferung
+
+Nur Kanal 1 wird verwendet:
+
+```text
+Pi GPIO27 (physischer Pin 13) -> Relais IN
+Pi Pin 2 (5 V)                -> Relais VCC
+Pi GND                        -> Relais GND
+
+Pi Pin 2 (5 V)                -> Relais COM
+Relais NO                     -> MOSFET PWM1
+Pi GND                        -> MOSFET GND1
+
+12-V-Netzteil Plus            -> MOSFET DC+
+12-V-Netzteil Minus           -> MOSFET DC-
+Magnetschloss Plus            -> MOSFET OUT1+
+Magnetschloss Minus           -> MOSFET OUT1-
+```
+
+Das KF-301 ist ein Low-Level-Trigger. Mit der geplanten Verbindung ueber `COM` und `NO` gilt deshalb:
+
+```text
+GPIO27 LOW  -> Relais zieht an -> 5 V an PWM1 -> Schloss bestromt/verriegelt
+GPIO27 HIGH -> Relais faellt ab -> PWM1 aus    -> Schloss stromlos/entriegelt
+Pi stromlos -> Relais aus      -> Schloss stromlos/entriegelt (Fail-Safe)
+```
+
+Vor dem ersten Test mit dem neuen Modul muessen 12 V getrennt und der Pi sauber heruntergefahren werden. Zuerst wird ausschliesslich die 5-V-Steuerseite verdrahtet und ohne Magnetschloss getestet. Erst danach werden MOSFET-Ausgang und Schloss wieder zugeschaltet.
+
+## Update: Endgueltige relaislose Loesung und Bootdienst (2026-08-08)
+
+Das zusaetzlich getestete KF-301-Relais ist funktionsfaehig, kann in diesem Aufbau aber nicht direkt sicher vom 3,3-V-GPIO gesteuert werden. Bei 3,3-V-Versorgung leuchtete zwar die Eingangs-LED, die 5-V-Spule bewegte den Kontakt jedoch nicht. Mit echten 5 V und manuell gegen GND gezogenem Eingang schalteten Relais, `COM`/`NC` und MOSFET korrekt. Das Relais wird fuer die endgueltige Loesung nicht benoetigt.
+
+### Bestaetigte endgueltige Verdrahtung
+
+Der galvanisch getrennte MOSFET-Eingang wird aktiv-low betrieben:
+
+```text
+Pi Pin 2 (5 V)                 -> MOSFET PWM1
+Pi GPIO27 (physischer Pin 13) -> MOSFET GND1
+
+12-V-Netzteil Plus  -> MOSFET DC+
+12-V-Netzteil Minus -> MOSFET DC-
+Magnetschloss Plus  -> MOSFET OUT1+
+Magnetschloss Minus -> MOSFET OUT1-
+```
+
+Es besteht keine zusaetzliche Verbindung von Pi-GND zu `GND1`. GPIO27 bildet die strombegrenzte Minus-Seite des optisch getrennten Eingangs.
+
+```text
+GPIO27 LOW  -> volle Eingangsspannung -> MOSFET an  -> Schloss bestromt/verriegelt
+GPIO27 HIGH -> Eingang aus            -> MOSFET aus -> Schloss stromlos/entriegelt
+```
+
+Zehn lastfreie EIN/AUS-Zyklen im Sekundentakt liefen sauber. Ein 3-Sekunden-Test mit angeschlossenem 12-V-Magnetschloss war erfolgreich. Anschliessend erkannte ein einmaliger PC/SC-Test einen NFC-Token, entriegelte 10 Sekunden und verriegelte wieder; dabei wurde keine Karten-ID gelesen oder protokolliert.
+
+### Installierter Bootdienst
+
+Im Repository liegen jetzt:
+
+- `src/door_controller.py`: NFC-Ereignissteuerung, 30-Sekunden-Entriegelung, erneute Ausloesung erst nach Entfernen des Tokens.
+- `systemd/kaffeetuer.service`: automatischer Start und Neustart; setzt GPIO27 vor Start und nach Stop auf LOW/verriegelt.
+- `install.sh`: reproduzierbare Installation der Pakete, Anwendung, systemd-Unit und Bootvorgabe.
+
+Auf dem Test-Pi ist `kaffeetuer.service` installiert, aktiviert und nach einem Neustart automatisch gestartet. `/boot/firmware/config.txt` enthaelt unter `[all]`:
+
+```text
+gpio=27=op,dl
+```
+
+Die vorherige Datei wurde auf dem Pi als `/boot/firmware/config.txt.before-nexor-door` gesichert. Nach dem Neustart waren der Dienst `active` und GPIO27 `LOW`. Die abschliessende physische Beobachtung des 30-Sekunden-NFC-Zyklus nach Boot steht noch aus.
+
+## Update: Flashbares Release-Image v0.1.0 (2026-08-08)
+
+Mit dem offiziellen `RPi-Distro/pi-gen`-Projekt, Bookworm-Zweig und Commit `4be6bbd0933c900517cb309d4f4f44267d2c2cac` wurde ein frisches Raspberry Pi OS Lite 32-bit fuer `armhf` gebaut. Das Image ist damit mit Raspberry Pi Zero und Zero W (ARMv6) kompatibel und basiert nicht auf einem unsauberen Klon der 64-GB-Testkarte.
+
+Release-Artefakte:
+
+```text
+deploy/nexor-pi-door-v0.1.0-2026-08-08.img.xz
+deploy/nexor-pi-door-v0.1.0-2026-08-08.img.xz.sha256
+```
+
+SHA-256:
+
+```text
+a89bc36e5a96a65847b6356952c76bb918cb9259d45d5c279444af93d4fea28a
+```
+
+Das komprimierte Image ist 580.456.284 Byte gross. Es enthaelt den aktivierten NFC-Bootdienst, PC/SC und `libccid`, die 30-Sekunden-Entriegelung sowie `gpio=27=op,dl`. WLAN, Bluetooth, NetworkManager und SSH sind im Release deaktiviert bzw. maskiert; das angelegte lokale Konto besitzt keinen nutzbaren Passworthash.
+
+Durchgefuehrte Offline-Pruefungen:
+
+- XZ-Integritaet erfolgreich.
+- Boot- und Root-Partition read-only eingebunden und Inhalte kontrolliert.
+- Python-Syntax, 30-Sekunden-Wert, systemd-Aktivierung, PC/SC-Socket und `pinctrl` kontrolliert.
+- GPIO-Bootvorgabe und deaktivierte Netzwerkdienste kontrolliert.
+- FAT-Dateisystem mit `fsck.vfat -n` und ext4-Dateisystem mit `e2fsck -f -n` ohne Fehler geprueft.
+- SHA-256 unter Linux erzeugt und unter Windows unabhaengig bestaetigt.
+
+Noch offen ist der reale Erstboot dieses neu gebauten Images auf einer separaten microSD-Karte mit abschliessendem NFC-/30-Sekunden-Abnahmetest. Die bisherige Test-SD bleibt als Rueckfall erhalten.
+
+## Korrektur: Flashbares Release-Image v0.1.1 (2026-08-08)
+
+Beim Abgleich mit der funktionierenden Test-SD wurde festgestellt, dass der eingesetzte Pi `over_voltage=1` benoetigt. Diese Einstellung fehlte im Release v0.1.0. v0.1.0 ist deshalb ersetzt worden und darf nicht geflasht werden.
+
+Die Einstellung ist nun sowohl im Installer und im reproduzierbaren `pi-gen`-Build als auch direkt in der Boot-Partition des korrigierten Images enthalten:
+
+```text
+gpio=27=op,dl
+over_voltage=1
+```
+
+Korrigierte Release-Artefakte:
+
+```text
+deploy/nexor-pi-door-v0.1.1-2026-08-08.img.xz
+deploy/nexor-pi-door-v0.1.1-2026-08-08.img.xz.sha256
+```
+
+SHA-256:
+
+```text
+01a0edf74fc491a46411595a6fe67124f580b47a9f0b13b6a5bc774566c41bc0
+```
+
+Das komprimierte Image ist 580.456.240 Byte gross. XZ-Integritaet, FAT- und ext4-Dateisystem sowie der Inhalt der Boot-Partition wurden erneut geprueft. Die Pruefung bestaetigt exakt eine aktive Zeile `over_voltage=1`. Der reale Erstboot und NFC-/30-Sekunden-Abnahmetest dieses korrigierten Images bleiben offen.
